@@ -11,7 +11,7 @@ from pharmeasy_db import pharmeasydb
 
 class AmazonSpider(scrapy.Spider):
     name = "amazon"
-    allowed_domains = ["amazon.in", "1mg.com", "netmeds.com", "pharmeasy.in"]
+    allowed_domains = ["amazon.in", "1mg.com", "netmeds.com", "pharmeasy.in","tradeindia.com"]
 
     def start_requests(self):
         keyword_list = [
@@ -48,18 +48,18 @@ class AmazonSpider(scrapy.Spider):
             #     meta={'category': keyword}
             #     )
 
-            pharmeasy_url = f"https://pharmeasy.in/search/all?name={keyword}"
-            yield scrapy.Request(
-                url=pharmeasy_url,
-                callback=self.parse_pharmeasy,
-                meta={"category": keyword}
-            )
+            # pharmeasy_url = f"https://pharmeasy.in/search/all?name={keyword}"
+            # yield scrapy.Request(
+            #     url=pharmeasy_url,
+            #     callback=self.parse_pharmeasy,
+            #     meta={"category": keyword}
+            # )
 
-            tradeindia_url = f"https://www.tradeindia.com/search.html?keyword=multivitamin"
+            tradeindia_url = f"https://www.tradeindia.com/search.html?keyword={keyword}"
             yield scrapy.Request(
                 url=tradeindia_url,
                 callback=self.parse_tradeindia,
-                meta={"category": keyword }
+                meta={"category": keyword, "ispagination": False }
             )
 
 
@@ -310,8 +310,52 @@ class AmazonSpider(scrapy.Spider):
         # pharmeasydb.insert_data(record)
     
     def parse_tradeindia(self, response):
+        category = response.meta['category']
+        ispagination = response.meta['ispagination']
+        # if ispagination:
+        #     print("coming from pagination")
+
         products_details = response.css("div.product_details")
         for product in products_details:
+            item = {}
+            # print("<------------------>")
             name = product.css("div div a h2::text").get()
+            company = product.css("p.sc-3b1eb120-13::text").get()
             product_info_link = product.css("div div a").attrib['href']
+            if name:
+                item['name'] = name
+                item['company'] = company
+                item['product_info_link'] = product_info_link
+                # print(product_info_link)
+                # print(item)
+                yield scrapy.Request(
+                    url=product_info_link,
+                    callback=self.parse_tradeindia_product,
+                    meta={"item": item}
+                )
+            else:
+                break
+
+        next_page_url = response.css("li.last-link a").attrib['href']
+        if next_page_url:
+            yield scrapy.Request(
+                url=next_page_url,
+                callback=self.parse_tradeindia,
+                meta={"category": category, "ispagination": True}
+            )
+    
+    
+    def parse_tradeindia_product(self, response):
+        print("----------------------------")
+        item = response.meta['item']
+        table = response.css("table.spec-table tbody tr")
+        record = {**item}
+        for row in table:
+            key = row.css("td:nth-child(1)::text").get()
+            value = row.css("td:nth-child(2)::text").get()
+            record[key] = value
+        
+        print(record)
+        #add to DB
+
 
