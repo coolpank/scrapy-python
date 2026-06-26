@@ -11,7 +11,14 @@ from pharmeasy_db import pharmeasydb
 
 class AmazonSpider(scrapy.Spider):
     name = "amazon"
-    allowed_domains = ["amazon.in", "1mg.com", "netmeds.com", "pharmeasy.in","tradeindia.com"]
+    allowed_domains = [
+        "amazon.in", 
+        "1mg.com", 
+        "netmeds.com",
+        "pharmeasy.in",
+        "tradeindia.com",
+        "exportersindia.com"
+    ]
 
     def start_requests(self):
         keyword_list = [
@@ -55,12 +62,20 @@ class AmazonSpider(scrapy.Spider):
             #     meta={"category": keyword}
             # )
 
-            tradeindia_url = f"https://www.tradeindia.com/search.html?keyword={keyword}"
+            exportsindia_url = f"https://www.exportersindia.com/search.php?srch_catg_ty=prod&term={keyword}"
             yield scrapy.Request(
-                url=tradeindia_url,
-                callback=self.parse_tradeindia,
-                meta={"category": keyword, "ispagination": False }
+                url=exportsindia_url,
+                callback=self.parse_exportsindia,
+                meta={"category": keyword }
             )
+
+            # tradeindia_url = f"https://www.tradeindia.com/search.html?keyword={keyword}"
+            # yield scrapy.Request(
+            #     url=tradeindia_url,
+            #     callback=self.parse_tradeindia,
+            #     dont_filter=True,
+            #     meta={"category": keyword, "ispagination": False }
+            # )
 
 
 
@@ -312,13 +327,13 @@ class AmazonSpider(scrapy.Spider):
     def parse_tradeindia(self, response):
         category = response.meta['category']
         ispagination = response.meta['ispagination']
-        # if ispagination:
-        #     print("coming from pagination")
+        if ispagination:
+            print("coming from pagination")
 
         products_details = response.css("div.product_details")
         for product in products_details:
             item = {}
-            # print("<------------------>")
+            print("<------------------>")
             name = product.css("div div a h2::text").get()
             company = product.css("p.sc-3b1eb120-13::text").get()
             product_info_link = product.css("div div a").attrib['href']
@@ -326,11 +341,12 @@ class AmazonSpider(scrapy.Spider):
                 item['name'] = name
                 item['company'] = company
                 item['product_info_link'] = product_info_link
-                # print(product_info_link)
-                # print(item)
+                print(product_info_link)
+                print(item)
                 yield scrapy.Request(
                     url=product_info_link,
                     callback=self.parse_tradeindia_product,
+                    dont_filter=True,
                     meta={"item": item}
                 )
             else:
@@ -341,6 +357,7 @@ class AmazonSpider(scrapy.Spider):
             yield scrapy.Request(
                 url=next_page_url,
                 callback=self.parse_tradeindia,
+                dont_filter=True,
                 meta={"category": category, "ispagination": True}
             )
     
@@ -357,5 +374,33 @@ class AmazonSpider(scrapy.Spider):
         
         print(record)
         #add to DB
+    
+    def parse_exportsindia(self, response):
+        category = response.meta["category"]
+        products = response.css("div.inDataH")
+        for product in products:
+            name = product.css("h2 a::text").get()
+            # print(name)
+            href = product.css("h2 a").attrib['href']
+            # print(href)
+            yield scrapy.Request(
+                url=href,
+                callback=self.parse_exportsindia_product,
+                meta={"category": category, "name": name }
+            )
+    
+    def parse_exportsindia_product(self, response):
+        print("<-------------------->")
+        category = response.meta['category']
+        product_name = response.meta['name']
+        lists = response.css("div.eipdt-oi-list ul li")
+        record = {"category": category, "product_name": product_name}
+        for list in lists:
+            key = list.css("span:nth-child(1)::text").get()
+            value = list.css("span:nth-child(2)::text").get()
+            record[key] = value
+        
+        # print(record)
+
 
 
