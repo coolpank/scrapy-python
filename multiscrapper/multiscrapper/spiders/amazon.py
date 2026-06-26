@@ -6,6 +6,7 @@ from amazon_db import amazondb
 from netmeds_db import netmeds
 from onemg_db import onemgdb
 from pharmeasy_db import pharmeasydb
+from exportsindia_db import exports_india_db
 
 
 
@@ -394,13 +395,21 @@ class AmazonSpider(scrapy.Spider):
         category = response.meta['category']
         product_name = response.meta['name']
         lists = response.css("div.eipdt-oi-list ul li")
-        record = {"category": category, "product_name": product_name}
+        record = {"category": category, "product_name": product_name, "url": response.url}
         for list in lists:
             key = list.css("span:nth-child(1)::text").get()
             value = list.css("span:nth-child(2)::text").get()
             record[key] = value
         
-        # print(record)
+        infolist = response.css("ul.pdsd-od-list li")
+        for item in infolist:
+            key = item.css("::text").get()
+            value = item.css("span::text").get()
+            record[key] = value
+
+        print(record)
+        
+        # exports_india_db.insert_data(record)
 
 
 
