@@ -18,7 +18,8 @@ class AmazonSpider(scrapy.Spider):
         "netmeds.com",
         "pharmeasy.in",
         "tradeindia.com",
-        "exportersindia.com"
+        "exportersindia.com",
+        "nutrabay.com"
     ]
 
     def start_requests(self):
@@ -63,13 +64,6 @@ class AmazonSpider(scrapy.Spider):
             #     meta={"category": keyword}
             # )
 
-            exportsindia_url = f"https://www.exportersindia.com/search.php?srch_catg_ty=prod&term={keyword}"
-            yield scrapy.Request(
-                url=exportsindia_url,
-                callback=self.parse_exportsindia,
-                meta={"category": keyword }
-            )
-
             # tradeindia_url = f"https://www.tradeindia.com/search.html?keyword={keyword}"
             # yield scrapy.Request(
             #     url=tradeindia_url,
@@ -77,6 +71,20 @@ class AmazonSpider(scrapy.Spider):
             #     dont_filter=True,
             #     meta={"category": keyword, "ispagination": False }
             # )
+
+            # exportsindia_url = f"https://www.exportersindia.com/search.php?srch_catg_ty=prod&term={keyword}"
+            # yield scrapy.Request(
+            #     url=exportsindia_url,
+            #     callback=self.parse_exportsindia,
+            #     meta={"category": keyword, "page_no": 1, "solr_rand_no": False }
+            # )
+            
+            nutrabay_url = f"https://nutrabay.com/search?q={keyword}"
+            yield scrapy.Request(
+                url=nutrabay_url,
+                callback=self.parse_nutrabay,
+                meta={"category": keyword}
+            )
 
 
 
@@ -381,15 +389,43 @@ class AmazonSpider(scrapy.Spider):
         products = response.css("div.inDataH")
         for product in products:
             name = product.css("h2 a::text").get()
-            # print(name)
-            href = product.css("h2 a").attrib['href']
-            # print(href)
+            href = product.css("h2 a::attr(href)").get()
+            if not href:
+                pass
+            else:
+                yield scrapy.Request(
+                    url=href,
+                    callback=self.parse_exportsindia_product,
+                    meta={"category": category, "name": name }
+                )
+
+        page_no = response.meta['page_no']
+        solr_rand_no = response.meta['solr_rand_no']
+        if not solr_rand_no:
+            match = re.search(r"var\s+solr_random_no\s*=\s*'(\d+)';", response.text)
+            solr_rand_no = match.group(1)
+            print(f"Captured solr_random_no: {solr_rand_no}")
+            next_url = f"https://www.exportersindia.com/search.php?term={category}&srch_catg_ty=prod&cont2=IN&pageno={page_no + 1}&solr_rand_no={solr_rand_no}&action=ajax_load_classified"
             yield scrapy.Request(
-                url=href,
-                callback=self.parse_exportsindia_product,
-                meta={"category": category, "name": name }
+            url=next_url,
+            callback=self.parse_exportsindia,
+            meta={"category": category, 
+                    "page_no": page_no + 1,
+                    "solr_rand_no": solr_rand_no,
+                    }
             )
-    
+        else:
+            next_url = f"https://www.exportersindia.com/search.php?term={category}&srch_catg_ty=prod&cont2=IN&pageno={page_no + 1}&solr_rand_no={solr_rand_no}&action=ajax_load_classified"
+            yield scrapy.Request(
+            url=next_url,
+            callback=self.parse_exportsindia,
+            meta={"category": category, 
+                    "page_no": page_no + 1,
+                    "solr_rand_no": solr_rand_no,
+                    }
+            )
+            
+
     def parse_exportsindia_product(self, response):
         print("<-------------------->")
         category = response.meta['category']
@@ -410,6 +446,39 @@ class AmazonSpider(scrapy.Spider):
         print(record)
         
         # exports_india_db.insert_data(record)
+
+    
+    def parse_nutrabay(self, response):
+        print("-----------nutrabay-----------")
+        category = response.meta["category"]
+        details = response.css("div.container.pb-65 div div:nth-child(2) ul#product_list li")
+        for detail in details:
+            href = detail.css("div div div:nth-child(2) a::attr(href)").get()
+            name = detail.css("div div div:nth-child(2) a p::text").get()
+            # print(f"name  : {name}")
+            # print(f"href  : {href}")
+            product_url = response.urljoin(href)
+            yield scrapy.Request(
+                url=product_url,
+                callback=self.parse_nutrabay_product,
+                meta={"category": category, "name": name }
+            )
+    
+    def parse_nutrabay_product(self, response):
+        product_name = response.meta['name']
+        rows = response.css("div[data-details-section='true'] div div div table tbody tr")
+        record = {"product": product_name }
+        for row in rows:
+            key = row.css("td:nth-child(1)::text").get()
+            value = row.css("td:nth-child(2) div::text").get()
+            record[key] = value
+        
+        print("----------details----------")
+        print(record)
+
+
+
+
 
 
 
